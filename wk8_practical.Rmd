@@ -17,192 +17,396 @@ Topics covered:
 3. Measuring clustering using local statistics
 
 ```{r}
+# load the here library or managing file paths in projects
 library(here)
-library(tidyverse)
-library(sf)
-library(tmap)
+# load 'MLID' package for calculating measures of segregation and inequality
 library(MLID)
+# load tidyverse package for data manipulation and visualiation
+library(tidyverse)
+# load sf package for handling spatial data
+library(sf)
+# load tmap for creating thematic maps
+library(tmap)
+# load spdep package for spatial dependence analysis 
 library(spdep)
+# load stargazer to created well-formatted output tables
+library(stargazer)
 ```
 
 ```{r}
+# read csv data containing ethnicity information or 4,301 Output Areas (OAs) in five local authority districts
 ethnicity_OAs <- read_csv(here("Practical and Evidence Brief resources-20250311", "Ethnicity_OA_2021.csv"))
 ```
 
 ```{r}
+# filter the ethnicity_OAs data to include only rows for Bradford
 bradford_OAs <- filter(ethnicity_OAs, Local_Authority == "Bradford")
 ```
 
 ```{r}
-bradford_summary <- summarise(bradford_OAs, across(White_British:Other_groups, ~ .x/Total_OA_pop*100)) %>% 
+# create a summary of Bradford ethnic composition data as percentages of the total OA population
+bradford_summary <- bradford_OAs %>% 
+  # for each ethnic group column from 'White_British' all the way to 'Other_groups',
+  # calculate the percentage of each ethnic group's population relative to the total OA population
+  summarise(
+    across(White_British:Other_groups, ~ .x/Total_OA_pop*100)
+  ) %>% 
+  # add a new column call 'rowid' to uniquely identify each row
   mutate(rowid = row_number())
 ```
 
 ```{r}
+# transform Bradford ethnicity data from wide to long format for easier plotting and analysis
 bradford_summary_long <- pivot_longer(bradford_summary, cols = White_British:Other_groups, names_to = "Ethnicity", values_to = "Percent")
 ```
 
 ```{r}
-ggplot(bradford_summary_long, aes(Ethnicity, Percent)) + geom_boxplot() + theme_bw()
+# create a boxplot showing the distribution of ethnicity percentages across Bradford OAs
+ggplot(bradford_summary_long, aes(Ethnicity, Percent)) +
+  geom_boxplot() + # add boxplots for each ethnic group
+  theme_bw() + # apply a clean black-and-white them
+  ggtitle("Distribution of Ethnicity Percentages in Bradford OAs") + # plot title
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ```{r}
+# calculate summary statistics (mean, median, maximum, minimum) for each ethnic group
 bradford_summary_statistics <- bradford_summary_long %>% 
-  group_by(Ethnicity) %>% 
-  summarise(mean = mean(Percent), median = median(Percent), maximum = max(Percent), minimum = min(Percent)) %>% 
-  mutate(across(c(mean, median, maximum, minimum), ~ round(.x, 1)))
+  group_by(Ethnicity) %>%  # group data y ethnicity
+  summarise(
+    mean = mean(Percent), # compute average percentage
+    median = median(Percent), # compute median percentage
+    maximum = max(Percent), # compute maximum percentage
+    minimum = min(Percent) # compute minimum percentage
+    ) %>%
+  mutate(across(c(mean, median, maximum, minimum), # round all statistics to 1 decimal place
+                ~ round(.x, 1)))
+# inspect
+# the median percentage of White British residents in Bradford's OAs is 77.5%
+# the maximum percentage of Pakistani residents in Bradford's OAs is 93.4%
+# the median percentage of Indian residents in Bradford's OAs is 1.1%
+# the mean percentage of Black Caribbean residents in Bradford's OA is 0.5%
+bradford_summary_statistics
 ```
 
 ```{r}
-output_area_shapes <- st_read(here("Practical and Evidence Brief resources-20250311","OA_shapes_2021.shp"))
+# load the Output Area (OA) chapefile containing geographic bounadaries
+output_area_shapes <- st_read(
+  here("Practical and Evidence Brief resources-20250311","OA_shapes_2021.shp")
+)
+
+# quick plot a simple map of the OA boundaries using tmap
 qtm(output_area_shapes)
 ```
 
 ```{r}
+# merge shapefile with Bradford's ethnicity data to create a spatial data frame using the OA21CD and OA_code column
+# default merging will drop all row which do not appear in both the datasets that are being merged - only the Bradford OAs will be left after merging
 bradford_map <- merge(output_area_shapes, bradford_OAs, by.x = "OA21CD", by.y = "OA_code")
 ```
 
 ```{r}
+# recalculate percentage-based ethnicity columns to the Bradford spatial data frame
 bradford_map <- mutate(bradford_map, across(White_British:Other_groups, ~.x/Total_OA_pop*100,.names = paste("p", "{.col}", sep = "_")))
 ```
 
 ```{r}
-tm_shape(bradford_map) + tm_fill(col = c("p_White_British", "p_Pakistani"), title = c("% White British", "% Pakistani"), style = "fixed", breaks = c(0, 10, 20, 50, 100)) + tm_borders(col = "darkgrey", alpha = .25) + tm_scale_bar(position = c("LEFT", "BOTTOM")) + tm_compass(position = c("RIGHT", "TOP"))
+# create thematic map visualising percentages of White British and Pakistani groups in Bradford Output Areas
+tm_shape(bradford_map) +
+  tm_fill(col = c("p_White_British", "p_Pakistani"), # columns to visualise as percentages
+          title = c("% White British", "% Pakistani"),
+          style = "fixed", # use fixed intervals for colour breaks
+          breaks = c(0, 10, 20, 50, 100)) + # defined intervals (0-10, 10-20, 20-50, 50-100)
+  tm_borders(col = "darkgrey",
+             alpha = .25) +
+  tm_scale_bar(position = c("LEFT", "BOTTOM")) +
+  tm_compass(position = c("RIGHT", "TOP")) +
+  tm_layout(main.title = "% of White British and Pakistani Populations in Bradford OAs",
+            main.title.position = c("center", "top"),
+            main.title.size = 1.2,
+            main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1)
 ```
 
 ```{r}
-dissim1 <- id(bradford_OAs, vars = c("Pakistani", "White_British"))
+# calculate the index of dissimilarity between Pakistani and White British groups in Bradford OAs
+dissimilarity_index <- MLID::id(bradford_OAs,
+                          vars = c("Pakistani", "White_British"),
+                          )
+
+# inspect
+# the dissimilarity value of 0.76 is quite high and tells you the distribution of Pakistani and White British residents in Bradford is quite uneven, as we saw earlier in the maps
+dissimilarity_index
 ```
 
 ```{r}
+# create a new data frame combining ethnicity groups into broader categories
 bradford_OAs_sum <- bradford_OAs %>% 
-  mutate(Whites = White_British + Other_White) %>% 
-  mutate(All_minorities = Indian + Pakistani + Bangladeshi + Chinese + African + Caribbean + Mixed + Other_groups)
+  mutate(Whites = White_British + Other_White) %>% # whites
+  mutate(All_minorities = Indian + Pakistani + Bangladeshi + Chinese + African + Caribbean + Mixed + Other_groups) # all non-whites
 
-dissim2 <- MLID::id(bradford_OAs_sum, vars = c("Whites", "All_minorities"))
+dissimilarity_index_2 <- MLID::id(bradford_OAs_sum, vars = c("Whites", "All_minorities"))
+
+# inspect
+dissimilarity_index_2
 ```
 
 ```{r}
+# generate spatial neighbour relationships for Bradford OAs using Queen's contiguity
 neighbour_OAs <- poly2nb(bradford_map, queen = TRUE)
+# provide summary statistics of the neighbourhood relationships
 summary(neighbour_OAs)
 ```
 
 ```{r}
+# plot the geographic boundaries of Bradford's Output Areas
 plot(bradford_map$geometry)
-plot(neighbour_OAs, coords = bradford_map$geometry, col ="red", add  = T)
+# overlay neighbourhood connections onto the map
+plot(
+  neighbour_OAs, # adjacency matrix
+  coords = bradford_map$geometry, # plot neighbour connections from polygon centroids
+  col ="red", # colour of neighbour lines
+  add  = T # add neighbour lines to existing plot
+)
 ```
 
 ```{r}
+# create neighbour relationships to spatial weights list format
 neighbour_OAs <- nb2listw(neighbour_OAs)
+
+# calculate Getis-Ord Gi* statistic for spatial clustering (hot/cold spots) for "White British" group
 g_White_British <- localG(bradford_map$p_White_British, neighbour_OAs)
+
+# calculate Getis-Ord Gi* statistic for spatial clustering (hot/cold spots) for "Pakistani" group
 g_Pakistani <- localG(bradford_map$p_Pakistani, neighbour_OAs)
 ```
 
 ```{r}
+# append calculated Gi* statistic for White British to the spatial data frame
 g_map <- cbind(bradford_map, as.matrix(g_White_British)) %>%
     rename(g_White_British = as.matrix.g_White_British.)
 ```
 
 ```{r}
+# append calculated Gi* statistic for Pakistani to the spatial data frame
 g_map <- cbind(g_map, as.matrix(g_Pakistani)) %>%
          rename(g_Pakistani = as.matrix.g_Pakistani.)
 ```
 
 ```{r}
+# create a thematic map to visualise hotspots and coldspots for White British and Pakistani populations
 tm_shape(g_map) +  
-  tm_fill(c("g_White_British", "g_Pakistani"), 
-         palette = "-RdBu",
-          style = "fixed", breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10), title = c("White British", "Pakistani")) + 
-  tm_borders(col = "darkgrey", alpha = .25) 
+  tm_fill(c("g_White_British", "g_Pakistani"), # visualise Gi* values for both ethnic groups
+         palette = "-RdBu", # diverging palette to highligh hot and cold spots
+         style = "fixed", # fixed breaks for significance thresholds
+         breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10), # thresholds for isgnificance (95% and 99%)
+         title = c("White British (Gi*)", "Pakistani (Gi*)")) + # titles in the legend
+  tm_borders(col = "darkgrey",
+             alpha = .25) +
+  tm_scale_bar(position = c("LEFT", "BOTTOM")) +
+  tm_compass(position = c("RIGHT", "TOP")) +
+  tm_layout(main.title = "Hotspots and Coldspots for Ethnic Groups in Bradford OAs",
+            main.title.position = c("center", "top"),
+            main.title.size = 1.2,
+            main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1)
 ```
 
 Producing Key Output
 
 ```{r}
+# filter the ethnicity_OAs data to include only rows for Walsall
 walsall_OAs <- filter(ethnicity_OAs, Local_Authority == "Walsall")
 ```
 
 ```{r}
-walsall_summary <- summarise(walsall_OAs, across(White_British:Other_groups, ~ .x/Total_OA_pop*100)) %>% 
+# calculate percentage-based ethnicity columns to the Walsall spatial data frame
+walsall_summary <- summarise(walsall_OAs,
+                             across(White_British:Other_groups, ~ .x/Total_OA_pop*100)
+                             ) %>% 
   mutate(rowid = row_number())
 ```
 
 ```{r}
+# transform Walsall ethnicity data from wide to long format for easier plotting and analysis
 walsall_summary_long <- pivot_longer(walsall_summary, cols = White_British:Other_groups, names_to = "Ethnicity", values_to = "Percent")
 ```
 
 ```{r}
-ggplot(walsall_summary_long, aes(Ethnicity, Percent)) + geom_boxplot() + theme_bw()
+# create a boxplot showing the distribution of ethnicity percentages across Walsall OAs
+ggplot(walsall_summary_long, aes(Ethnicity, Percent)) +
+  geom_boxplot() + # add boxplots for each ethnic group
+  theme_bw() + # apply a clean black-and-white theme
+  ggtitle("Distribution of Ethnicity Percentages in Walsall OAs") + # plot title
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_text(angle = 30, vjust = 0.6))
 ```
 
 ```{r}
+# calculate summary statistics (mean, median, maximum, minimum) for ethnicity percentages in Walsall OAs
 walsall_summary_statistics <- walsall_summary_long %>% 
-  group_by(Ethnicity) %>% 
-  summarise(mean = mean(Percent), median = median(Percent), maximum = max(Percent), minimum = min(Percent)) %>% 
+  group_by(Ethnicity) %>% # group data by Ethnicity category
+  summarise(
+    mean = mean(Percent), # calculate average percentage
+    median = median(Percent), # calculate median percentage
+    maximum = max(Percent), # calculate maximum percentage value
+    minimum = min(Percent) # calculate minimum percentage
+  ) %>% 
   mutate(across(c(mean, median, maximum, minimum), ~ round(.x, 1)))
 ```
 
 ```{r}
+# merge shapefile with Walsall's ethnicity data to create a spatial data frame using the OA21CD and OA_code column
+# default merging will drop all row which do not appear in both the datasets that are being merged - only the Walsall OAs will be left after merging
 walsall_map <- merge(output_area_shapes, walsall_OAs, by.x = "OA21CD", by.y = "OA_code")
 ```
 
 ```{r}
+# recalculate percentage-based ethnicity columns to the Walsall spatial data frame
 walsall_map <- mutate(walsall_map, across(White_British:Other_groups, ~.x/Total_OA_pop*100,.names = paste("p", "{.col}", sep = "_")))
 ```
 
 ```{r}
-tm_shape(walsall_map) + tm_fill(col = c("p_White_British", "p_Indian"), title = c("% White British", "% Indian"), style = "fixed", breaks = c(0, 10, 20, 50, 100)) + tm_borders(col = "darkgrey", alpha = .25) + tm_scale_bar(position = c("LEFT", "BOTTOM")) + tm_compass(position = c("RIGHT", "TOP"))
+# create thematic map visualising percentages of White British and Pakistani groups in Walsall Output Areas
+tm_shape(walsall_map) +
+  tm_fill(col = c("p_White_British", "p_Indian"), # columns to visualise as percentages
+          title = c("% White British", "% Indian"),
+          style = "fixed", # use fixed intervals for colour breaks
+          breaks = c(0, 10, 20, 50, 100)) + # defined intervals (0-10, 10-20, 20-50, 50-100)
+  tm_borders(col = "darkgrey",
+             alpha = .25) +
+  tm_scale_bar(position = c("center", "bottom")) +
+  tm_compass(position = c("right", "top")) +
+  tm_layout(main.title = "% of White British and Indian Populations in Walsall OAs",
+            main.title.position = c("center", "top"),
+            main.title.size = 1.2,
+            main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1)
 ```
 
 ```{r}
-dissim3 <- id(walsall_OAs, vars = c("Indian", "White_British"))
+# calculate the Index of Dissimilarity between Indian and White British populations in Walsall OAs
+dissimilarity_index_3 <- id(walsall_OAs, vars = c("Indian", "White_British"))
+
+# inspect
+# the dissimilarity value of 0.54 is high but not as much as that between the White British and Pakistani populations in Bradford as we saw earlier in the map
+dissimilarity_index_3
+
+# extract the numeric index value
+dissimilarity_value <-  as.numeric(dissimilarity_index_3)
 ```
 
 ```{r}
+# convert dissimilartiy index into a data frame
+dissimilarity_df <- data.frame(
+  Ethnic_Groups = "White British & Indian",
+  Dissimilarity_Index = round(dissimilarity_value, 2) # round to 2 decimal places
+)
+
+# experiment with various packages to convert table output
+library(gt)
+library(pander)
+library(xtable)
+library(flextable)
+library(stargazer)
+
+# gt
+dissimilarity_df %>%
+  gt() %>%
+  tab_header(title = "Index of Dissimilarity in Walsall")
+
+# pander
+pander(dissimilarity_df, caption = "Index of Dissimilarity in Walsall")
+
+# xtable
+print(xtable(dissimilarity_df, caption = "Index of Dissimilarity in Walsall"), type = "latex")
+
+# flextable
+dissimilarity_df %>%
+  flextable() %>%
+  set_caption("Index of Dissimilarity in Walsall")
+
+# stargazer
+stargazer(as.data.frame(dissimilarity_df), type = "text", summary = FALSE, 
+          title = "Index of Dissimilarity in Walsall", rownames = FALSE)
+```
+
+
+```{r}
+# generate spatial neighbour relationships for Walsall OAs using Queen's contiguity
 neighbour_OAs <- poly2nb(walsall_map, queen = TRUE)
+# provide summary statistics of the neighbourhood relationships
 summary(neighbour_OAs)
 ```
 
 
 ```{r}
+# plot the geographic boundaries of Bradford's Output Areas
 plot(walsall_map$geometry)
-plot(neighbour_OAs, coords = walsall_map$geometry, col ="red", add  = T)
+# overlay neighbourhood connections onto the map
+plot(
+  neighbour_OAs, # adjacency matrix
+  coords = walsall_map$geometry, # plot neighbour connections from polygon centroids
+  col ="red", # colour of neighbour lines
+  add  = T # add neighbour lines to existing plot
+)
 ```
 
 ```{r}
+# create neighbour relationships to spatial weights list format
 neighbour_OAs <- nb2listw(neighbour_OAs)
+
+# calculate Getis-Ord Gi* statistic for spatial clustering (hot/cold spots) for "White British" group
 g_White_British <- localG(walsall_map$p_White_British, neighbour_OAs)
+
+# calculate Getis-Ord Gi* statistic for spatial clustering (hot/cold spots) for "Indian" group
 g_Indian <- localG(walsall_map$p_Indian, neighbour_OAs)
 ```
 
 ```{r}
+# append calculated Gi* statistic for White British to the spatial data frame
 g_map <- cbind(walsall_map, as.matrix(g_White_British)) %>%
     rename(g_White_British = as.matrix.g_White_British.)
 ```
 
 ```{r}
+# append calculated Gi* statistic for Indian to the spatial data frame
 g_map <- cbind(g_map, as.matrix(g_Indian)) %>%
          rename(g_Indian = as.matrix.g_Indian.)
 ```
 
 ```{r}
+# create a thematic map to visualise hotspots and coldspots for White British and Pakistani populations
 tm_shape(g_map) +  
-  tm_fill(c("g_White_British", "g_Indian"), 
-         palette = "-RdBu",
-          style = "fixed", breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10), title = c("White British", "Indian")) + 
-  tm_borders(col = "darkgrey", alpha = .25) 
+  tm_fill(c("g_White_British", "g_Indian"), # visualise Gi* values for both ethnic groups
+         palette = "-RdBu", # diverging palette to highligh hot and cold spots
+         style = "fixed", # fixed breaks for significance thresholds
+         breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10), # thresholds for isgnificance (95% and 99%)
+         title = c("White British (Gi*)", "Indian (Gi*)")) + # titles in the legend
+  tm_borders(col = "darkgrey",
+             alpha = .25) +
+  tm_scale_bar(position = c("center", "bottom")) +
+  tm_compass(position = c("right", "top")) +
+  tm_layout(main.title = "Hotspots and Coldspots for Ethnic Groups in Walsall OAs",
+            main.title.position = c("center", "top"),
+            main.title.size = 1.2,
+            main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1)
 ```
 
-```{r}
-install.packages("MLID")
-library(MLID)
+Evidence Brief for Policy Report
 
+For your chosen authority, you then need to answer the following question:
 
-dissim_walsall <- MLID::id(walsall_OAs, vars = c("Indian", "White_British"))
+1. To what extent is the area more divided by ethnicity than by occupational social class?
 
-dissim_walsall
-# dissimilarity index between White British and Indians is 0.539
-```
+For the occupational class data, there is an additional csv on Moodle containing five variables: OA codes, Local Authority names, the count of people with NSSEC 1-2 occupations (managerial, administrative and professional), the count of people with NSSEC 5-7 occupations (semi/routine and manual jobs) and a final variable listing the total OA population of residents with NSSEC values. You can read more about NSSEC here: https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/employmentandemployeetypes/bulletins/industryandoccupationenglandandwales/census2021. 
+
+Hints: the approach you take is up to you. You could use statistics and/or maps to answer the question and you will want to focus the ethnic dimension of the brief to keep things manageable (e.g. by picking two relevant groups to compare, by undertaking a 'majority-minority' comparison and so forth). Think carefully about what you think is the most effective way to deliver a succinct answer to the brief and feel free to reach out if you are unsure. 
 
 ```{r}
 NSSEC_OAs <- read_csv(here("Practical and Evidence Brief resources-20250311", "NSSEC_OA_2021.csv"))
