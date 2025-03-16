@@ -1,0 +1,1 @@
+"0","tm_shape(bradford_map) + tm_fill(col = c(""p_White_British"", ""p_Pakistani""), title = c(""% White British"", ""% Pakistani""), style = ""fixed"", breaks = c(0, 10, 20, 50, 100)) + tm_borders(col = ""darkgrey"", alpha = .25) + tm_scale_bar(position = c(""LEFT"", ""BOTTOM"")) + tm_compass(position = c(""RIGHT"", ""TOP""))"

@@ -1,0 +1,1 @@
+"0","bradford_map <- mutate(bradford_map, across(White_British:Other_groups, ~.x/Total_OA_pop*100,.names = paste(""p"", ""{.col}"", sep = ""_"")))"

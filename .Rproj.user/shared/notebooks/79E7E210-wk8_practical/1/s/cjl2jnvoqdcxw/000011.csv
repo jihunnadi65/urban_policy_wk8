@@ -1,0 +1,6 @@
+"0","bradford_summary_statistics <- bradford_summary_long %>% "
+"0","  group_by(Ethnicity) %>% "
+"0","  summarise(mean = mean(Percent), median = median(Percent), maximum = max(Percent), minimum = min(Percent)) %>% "
+"0","  mutate(across(c(mean, median, maximum, minimum), ~ round(.x, 1)))"
+"0",""
+"0","View(bradford_summary_statistics)"

@@ -1,0 +1,3 @@
+"0","bradford_summary_long <- pivot_longer(bradford_summary, cols = White_British:Other_groups, names_to = ""Ethnicity"", values_to = ""Percent"")"
+"0",""
+"0","View(bradford_summary_long)"

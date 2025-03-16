@@ -1,0 +1,6 @@
+"0","walsall_summary <- summarise(walsall_OAs, across(White_British:Other_groups, ~ .x/Total_OA_pop*100)) %>% 
+  mutate(rowid = row_number())
+"
+"2","Warning: Returning more (or less) than 1 row per `summarise()` group was deprecated in dplyr 1.1.0.
+Please use `reframe()` instead.
+When switching from `summarise()` to `reframe()`, remember that `reframe()` always returns an ungrouped data frame and adjust accordingly."

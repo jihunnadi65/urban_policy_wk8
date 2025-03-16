@@ -1,0 +1,194 @@
+GEOG0149 - Week 8 Practical
+
+To what extent is there residential segregation in English cities?
+
+Background
+Governments in Britain and other European countries have long espoused a commitment to creating ‘mixed communities’ in residential neighbourhoods. Most of the focus has been on two dimensions of residential mixing: (i) between socio-economic groups (often defined using social class or income variables) and (ii) between groups defined in terms of ethnicity, race, country of birth or ethno-religious background (a huge range of measures have been used to do this which makes comparison rather tricky).
+
+In 2016, the Casey Review into opportunity and integration identified problems with divided communities as well as social, economic and cultural isolation in some parts of the UK. It argued that community division and a lack of mixing were having a wide range of adverse impacts on people and places. Much of the review’s focus was on relations between people from different ethnic and religious groups, although it also discussed class and economic divisions in some detail.
+
+Partly in response to the review, in 2018 the UK Government published an Integrated Communities Strategy Green Paper. This was followed in early 2019 by an Integrated Communities Action Plan which has recently been evaluated.  The Green Paper and Plan draw explicitly on contact theories to build a case that mixed communities are more prosperous, healthy and pleasant places to live than those where there is less residential integration.  Again, most of the focus was on ethnicity, migration and the ethno-religious geography of England, with less discussion of how to foster integration or mixing between people from different socio-economic groups. Following the Strategy’s initial publication, five Local Authority Districts (LADs) — Blackburn with Darwen, Bradford, Peterborough, Walsall and Waltham Forest (click here for a map)— were selected as test Integration Areas. These LADs drew up local plans on improving integration in their area with help from central government.
+
+Your task today is to explore some of the assumptions that lie behind the Integration Strategy. In particular, you are tasked with examining whether the five Integration Areas  exhibit a high degree of residential segregation along the lines of ethnicity. We’ll also explore the geography of where groups live using relatively recent ethnicity data from the 2021 census.
+
+Topics covered
+1. Computing and comparing segregation indices
+2. Mapping ethnicity
+3. Measuring clustering using local statistics
+
+```{r}
+library(here)
+library(tidyverse)
+library(sf)
+library(tmap)
+library(MLID)
+library(spdep)
+```
+
+```{r}
+ethnicity_OAs <- read_csv(here("Practical and Evidence Brief resources-20250311", "Ethnicity_OA_2021.csv"))
+```
+
+```{r}
+bradford_OAs <- filter(ethnicity_OAs, Local_Authority == "Bradford")
+```
+
+```{r}
+bradford_summary <- summarise(bradford_OAs, across(White_British:Other_groups, ~ .x/Total_OA_pop*100)) %>% 
+  mutate(rowid = row_number())
+```
+
+```{r}
+bradford_summary_long <- pivot_longer(bradford_summary, cols = White_British:Other_groups, names_to = "Ethnicity", values_to = "Percent")
+```
+
+```{r}
+ggplot(bradford_summary_long, aes(Ethnicity, Percent)) + geom_boxplot() + theme_bw()
+```
+
+```{r}
+bradford_summary_statistics <- bradford_summary_long %>% 
+  group_by(Ethnicity) %>% 
+  summarise(mean = mean(Percent), median = median(Percent), maximum = max(Percent), minimum = min(Percent)) %>% 
+  mutate(across(c(mean, median, maximum, minimum), ~ round(.x, 1)))
+```
+
+```{r}
+output_area_shapes <- st_read(here("Practical and Evidence Brief resources-20250311","OA_shapes_2021.shp"))
+qtm(output_area_shapes)
+```
+
+```{r}
+bradford_map <- merge(output_area_shapes, bradford_OAs, by.x = "OA21CD", by.y = "OA_code")
+```
+
+```{r}
+bradford_map <- mutate(bradford_map, across(White_British:Other_groups, ~.x/Total_OA_pop*100,.names = paste("p", "{.col}", sep = "_")))
+```
+
+```{r}
+tm_shape(bradford_map) + tm_fill(col = c("p_White_British", "p_Pakistani"), title = c("% White British", "% Pakistani"), style = "fixed", breaks = c(0, 10, 20, 50, 100)) + tm_borders(col = "darkgrey", alpha = .25) + tm_scale_bar(position = c("LEFT", "BOTTOM")) + tm_compass(position = c("RIGHT", "TOP"))
+```
+
+```{r}
+dissim1 <- id(bradford_OAs, vars = c("Pakistani", "White_British"))
+```
+
+```{r}
+bradford_OAs_sum <- bradford_OAs %>% 
+  mutate(Whites = White_British + Other_White) %>% 
+  mutate(All_minorities = Indian + Pakistani + Bangladeshi + Chinese + African + Caribbean + Mixed + Other_groups)
+
+dissim2 <- MLID::id(bradford_OAs_sum, vars = c("Whites", "All_minorities"))
+```
+
+```{r}
+neighbour_OAs <- poly2nb(bradford_map, queen = TRUE)
+summary(neighbour_OAs)
+```
+
+```{r}
+plot(bradford_map$geometry)
+plot(neighbour_OAs, coords = bradford_map$geometry, col ="red", add  = T)
+```
+
+```{r}
+neighbour_OAs <- nb2listw(neighbour_OAs)
+g_White_British <- localG(bradford_map$p_White_British, neighbour_OAs)
+g_Pakistani <- localG(bradford_map$p_Pakistani, neighbour_OAs)
+```
+
+```{r}
+g_map <- cbind(bradford_map, as.matrix(g_White_British)) %>%
+    rename(g_White_British = as.matrix.g_White_British.)
+```
+
+```{r}
+g_map <- cbind(g_map, as.matrix(g_Pakistani)) %>%
+         rename(g_Pakistani = as.matrix.g_Pakistani.)
+```
+
+```{r}
+tm_shape(g_map) +  
+  tm_fill(c("g_White_British", "g_Pakistani"), 
+         palette = "-RdBu",
+          style = "fixed", breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10), title = c("White British", "Pakistani")) + 
+  tm_borders(col = "darkgrey", alpha = .25) 
+```
+
+Producing Key Output
+
+```{r}
+walsall_OAs <- filter(ethnicity_OAs, Local_Authority == "Walsall")
+```
+
+```{r}
+walsall_summary <- summarise(walsall_OAs, across(White_British:Other_groups, ~ .x/Total_OA_pop*100)) %>% 
+  mutate(rowid = row_number())
+```
+
+```{r}
+walsall_summary_long <- pivot_longer(walsall_summary, cols = White_British:Other_groups, names_to = "Ethnicity", values_to = "Percent")
+```
+
+```{r}
+ggplot(walsall_summary_long, aes(Ethnicity, Percent)) + geom_boxplot() + theme_bw()
+```
+
+```{r}
+walsall_summary_statistics <- walsall_summary_long %>% 
+  group_by(Ethnicity) %>% 
+  summarise(mean = mean(Percent), median = median(Percent), maximum = max(Percent), minimum = min(Percent)) %>% 
+  mutate(across(c(mean, median, maximum, minimum), ~ round(.x, 1)))
+```
+
+```{r}
+walsall_map <- merge(output_area_shapes, walsall_OAs, by.x = "OA21CD", by.y = "OA_code")
+```
+
+```{r}
+walsall_map <- mutate(walsall_map, across(White_British:Other_groups, ~.x/Total_OA_pop*100,.names = paste("p", "{.col}", sep = "_")))
+```
+
+```{r}
+tm_shape(walsall_map) + tm_fill(col = c("p_White_British", "p_Indian"), title = c("% White British", "% Indian"), style = "fixed", breaks = c(0, 10, 20, 50, 100)) + tm_borders(col = "darkgrey", alpha = .25) + tm_scale_bar(position = c("LEFT", "BOTTOM")) + tm_compass(position = c("RIGHT", "TOP"))
+```
+
+```{r}
+dissim3 <- id(walsall_OAs, vars = c("Indian", "White_British"))
+```
+
+```{r}
+neighbour_OAs <- poly2nb(walsall_map, queen = TRUE)
+summary(neighbour_OAs)
+```
+
+
+```{r}
+plot(walsall_map$geometry)
+plot(neighbour_OAs, coords = walsall_map$geometry, col ="red", add  = T)
+```
+
+```{r}
+neighbour_OAs <- nb2listw(neighbour_OAs)
+g_White_British <- localG(walsall_map$p_White_British, neighbour_OAs)
+g_Indian <- localG(walsall_map$p_Indian, neighbour_OAs)
+```
+
+```{r}
+g_map <- cbind(walsall_map, as.matrix(g_White_British)) %>%
+    rename(g_White_British = as.matrix.g_White_British.)
+```
+
+```{r}
+g_map <- cbind(g_map, as.matrix(g_Indian)) %>%
+         rename(g_Indian = as.matrix.g_Indian.)
+```
+
+```{r}
+tm_shape(g_map) +  
+  tm_fill(c("g_White_British", "g_Indian"), 
+         palette = "-RdBu",
+          style = "fixed", breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10), title = c("White British", "Indian")) + 
+  tm_borders(col = "darkgrey", alpha = .25) 
+```

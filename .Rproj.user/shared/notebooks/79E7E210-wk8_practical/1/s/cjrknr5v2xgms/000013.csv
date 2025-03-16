@@ -1,0 +1,5 @@
+"0","g_map <- cbind(Bradford_map, as.matrix(g_White_British)) %>%
+    rename(g_White_British = as.matrix.g_White_British.)
+"
+"2","Error: object 'Bradford_map' not found
+"

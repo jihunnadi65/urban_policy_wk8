@@ -1,0 +1,5 @@
+"0","neighbour_OAs <- nb2listw(neighbour_OAs)
+"
+"2","Error in card(neighbours) : 
+  INTEGER() can only be applied to a 'integer', not a 'character'
+"

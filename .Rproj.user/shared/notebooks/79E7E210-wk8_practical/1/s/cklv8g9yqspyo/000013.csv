@@ -1,0 +1,5 @@
+"0","dissim2 <- id(walsall_OAs, vars = c(""Indian"", ""White_British""))
+"
+"2","Error in id(walsall_OAs, vars = c(""Indian"", ""White_British"")) : 
+  could not find function ""id""
+"
