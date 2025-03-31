@@ -34,7 +34,7 @@ library(stargazer)
 ```
 
 ```{r}
-# read csv data containing ethnicity information or 4,301 Output Areas (OAs) in five local authority districts
+# read csv data containing ethnicity information on 4,301 Output Areas (OAs) in five local authority districts
 ethnicity_OAs <- read_csv(here("Practical and Evidence Brief resources-20250311", "Ethnicity_OA_2021.csv"))
 ```
 
@@ -296,7 +296,7 @@ dissimilarity_index_3 <- id(walsall_OAs, vars = c("Indian", "White_British"))
 dissimilarity_index_3
 
 # extract the numeric index value
-dissimilarity_value <-  as.numeric(dissimilarity_index_3)
+dissimilarity_value <- as.numeric(dissimilarity_index_3)
 ```
 
 ```{r}
@@ -333,7 +333,6 @@ dissimilarity_df %>%
 stargazer(as.data.frame(dissimilarity_df), type = "text", summary = FALSE, 
           title = "Index of Dissimilarity in Walsall", rownames = FALSE)
 ```
-
 
 ```{r}
 # generate spatial neighbour relationships for Walsall OAs using Queen's contiguity
@@ -397,3 +396,370 @@ tm_shape(g_map) +
             legend.frame = TRUE,
             legend.title.size = 1)
 ```
+
+Evidence Brief 4 for Policy Report
+
+For this Evidence Brief you need to choose one integration area local authority district to focus on. DO NOT PICK BRADFORD as we used this example extensively in class and DO NOT PICK THE AREA YOU USED WHEN PRODUCING YOUR KEY OUTPUT.
+
+For your chosen authority, you then need to answer the following question:
+
+1. To what extent is the area more divided by ethnicity than by occupational social class?
+
+For the occupational class data, there is an additional csv on Moodle containing five variables: OA codes, Local Authority names, the count of people with NSSEC 1-2 occupations (managerial, administrative and professional), the count of people with NSSEC 5-7 occupations (semi/routine and manual jobs) and a final variable listing the total OA population of residents with NSSEC values. You can read more about NSSEC here: https://www.ons.gov.uk/employmentandlabourmarket/peopleinwork/employmentandemployeetypes/bulletins/industryandoccupationenglandandwales/census2021. 
+
+Peterborough Occupation
+
+```{r}
+# read csv data containing occupation information on 4,301 Output Areas (OAs) in five local authority districts
+occupation_OAs <- read_csv(here("Practical and Evidence Brief resources-20250311", "NSSEC_OA_2021.csv"))
+```
+
+```{r}
+# filter the occupation_OAs data to include only rows for Peterborough
+peterborough_OAs <- filter(occupation_OAs, Local_Authority == "Peterborough")
+```
+
+```{r}
+# create a summary of Peterborough occupation composition data as percentages of the total OA population
+peterborough_summary <- peterborough_OAs %>% 
+  # calculate the percentage of each occupation group's population relative to the total OA population
+  summarise(
+    across(NSSEC1_2:NSSEC5_7, ~ .x/OA_total*100)
+  ) %>% 
+  # add a new column call 'rowid' to uniquely identify each row
+  mutate(rowid = row_number())
+```
+
+```{r}
+# transform Peterborough occupation data from wide to long format for easier plotting and analysis
+peterborough_summary_long <- pivot_longer(peterborough_summary, cols = NSSEC1_2:NSSEC5_7, names_to = "Occupation", values_to = "Percent")
+```
+
+```{r}
+# create a boxplot showing the distribution of occupation percentages across Peterborough OAs
+ggplot(peterborough_summary_long, aes(Occupation, Percent)) +
+  geom_boxplot() + # add boxplots for each occupation group
+  theme_bw() + # apply a clean black-and-white theme
+  ggtitle("Distribution of Occupational Groups in Peterborough OAs") + # plot title
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# calculate summary statistics (mean, median, maximum, minimum) for each occupational group
+peterborough_summary_statistics <- peterborough_summary_long %>% 
+  group_by(Occupation) %>%  # group data by occupational groups
+  summarise(
+    mean = mean(Percent), # compute average percentage
+    median = median(Percent), # compute median percentage
+    maximum = max(Percent), # compute maximum percentage
+    minimum = min(Percent) # compute minimum percentage
+    ) %>%
+  mutate(across(c(mean, median, maximum, minimum), # round all statistics to 1 decimal place
+                ~ round(.x, 1)))
+# inspect
+# the mean percentage of NSSEC1_2 groups across Peterborough OAs is 27.8%
+# the mean percentage of NSSEC5_7 groups across Peterborough OAs is 36.2%
+# some OAs have as little as 5.5% of its population in NSSEC1_2 occupations
+peterborough_summary_statistics
+```
+
+```{r}
+# merge shapefile with Peterboroughs's occupation data to create a spatial data frame using the OA21CD and OA_code column
+# default merging will drop all row which do not appear in both the datasets that are being merged - only the Peterborough OAs will be left after merging
+peterborough_map <- merge(output_area_shapes, peterborough_OAs, by.x = "OA21CD", by.y = "OA_code")
+```
+
+```{r}
+# recalculate percentage-based ethnicity columns to the Bradford spatial data frame
+peterborough_map <- mutate(peterborough_map, across(NSSEC1_2:NSSEC5_7, ~.x/OA_total*100,.names = paste("p", "{.col}", sep = "_")))
+```
+
+```{r}
+# create thematic map visualising percentages of NSSEC1_2 and NSSEC5_7 groups in Peterborough Output Areas
+tm_shape(peterborough_map) +
+  tm_fill(col = c("p_NSSEC1_2", "p_NSSEC5_7"), # columns to visualise as percentages
+          title = c("% NSSEC1_2", "% NSSEC5_7"),
+          style = "fixed", # use fixed intervals for colour breaks
+          breaks = c(0, 10, 20, 30, 40, 50, 100)) + # defined intervals (0-10, 10-20, 20-50, 50-100)
+  tm_borders(col = "darkgrey",
+             alpha = .25) +
+  tm_scale_bar(position = c("LEFT", "BOTTOM")) +
+  tm_compass(position = c("RIGHT", "TOP")) +
+  tm_layout(main.title = "% of NSSEC1_2 and NSSEC5_7 Populations in Peterborough OAs",
+            main.title.position = c("center", "top"),
+            main.title.size = 0.65,
+            main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1,
+            legend.position = c("RIGHT", "BOTTOM"))
+```
+
+```{r}
+# calculate the index of dissimilarity between NSSEC1_2 and NSSEC5_7 groups in Peterborough OAs
+dissimilarity_index <- MLID::id(peterborough_OAs,
+                          vars = c("NSSEC1_2", "NSSEC5_7"),
+                          )
+
+# inspect
+# the dissimilarity value is 0.313
+dissimilarity_index
+
+# extract the numeric index value
+dissimilarity_value_1 <- as.numeric(dissimilarity_index)
+```
+
+```{r}
+# generate spatial neighbour relationships for Peterborough OAs using Queen's contiguity
+neighbour_OAs <- poly2nb(peterborough_map, queen = TRUE)
+# provide summary statistics of the neighbourhood relationships
+summary(neighbour_OAs)
+```
+
+```{r}
+# plot the geographic boundaries of Peterborough's Output Areas
+plot(peterborough_map$geometry)
+# overlay neighbourhood connections onto the map
+plot(
+  neighbour_OAs, # adjacency matrix
+  coords = peterborough_map$geometry, # plot neighbour connections from polygon centroids
+  col ="red", # colour of neighbour lines
+  add  = T # add neighbour lines to existing plot
+)
+```
+
+```{r}
+# create neighbour relationships to spatial weights list format
+neighbour_OAs <- nb2listw(neighbour_OAs)
+
+# calculate Getis-Ord Gi* statistic for spatial clustering (hot/cold spots) for "NSSEC1_2" group
+g_NSSEC1_2 <- localG(peterborough_map$p_NSSEC1_2, neighbour_OAs)
+
+# calculate Getis-Ord Gi* statistic for spatial clustering (hot/cold spots) for "NSSEC5_7" group
+g_NSSEC5_7 <- localG(peterborough_map$p_NSSEC5_7, neighbour_OAs)
+```
+
+```{r}
+# append calculated Gi* statistic for White British to the spatial data frame
+g_map <- cbind(peterborough_map, as.matrix(g_NSSEC1_2)) %>%
+    rename(g_NSSEC1_2 = as.matrix.g_NSSEC1_2.)
+```
+
+```{r}
+# append calculated Gi* statistic for Pakistani to the spatial data frame
+g_map <- cbind(g_map, as.matrix(g_NSSEC5_7)) %>%
+         rename(g_NSSEC5_7 = as.matrix.g_NSSEC5_7.)
+```
+
+```{r}
+# create a thematic map to visualise hotspots and coldspots for two occupational groups
+tm_shape(g_map) +  
+  tm_fill(c("g_NSSEC1_2", "g_NSSEC5_7"), # visualise Gi* values for both occupational groups
+         palette = "-RdBu", # diverging palette to highlight hot and cold spots
+         style = "fixed", # fixed breaks for significance thresholds
+         breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10), # thresholds for isgnificance (95% and 99%)
+         title = c("NSSEC1_2 (Gi*)", "NSSEC5_7 (Gi*)")) + # titles in the legend
+  tm_borders(col = "darkgrey",
+             alpha = .25) +
+  tm_scale_bar(position = c("LEFT", "BOTTOM")) +
+  tm_compass(position = c("RIGHT", "TOP")) +
+  tm_layout(main.title = "Hotspots and Coldspots for Occupational Groups in Peterborough OAs",
+            main.title.position = c("center", "top"),
+            main.title.size = 0.6,
+            main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1,
+            legend.position = c("RIGHT", "BOTTOM"))
+```
+
+Peterborough Ethnicity
+
+```{r}
+# read csv data containing ethnicity information on 4,301 Output Areas (OAs) in five local authority districts
+ethnicity_OAs <- read_csv(here("Practical and Evidence Brief resources-20250311", "Ethnicity_OA_2021.csv"))
+```
+
+```{r}
+# filter for Peterborough
+peterborough_OAs <- filter(ethnicity_OAs, Local_Authority == "Peterborough")
+```
+
+```{r}
+# summarise Peterborough ethnic composition as percentages
+peterborough_summary <- peterborough_OAs %>% 
+  summarise(across(White_British:Other_groups, ~ .x/Total_OA_pop*100)) %>% 
+  mutate(rowid = row_number())
+```
+
+```{r}
+# reshape to long format for plotting
+peterborough_summary_long <- pivot_longer(peterborough_summary, cols = White_British:Other_groups, names_to = "Ethnicity", values_to = "Percent")
+```
+
+```{r}
+# boxplot of ethnicity distributions
+ggplot(peterborough_summary_long, aes(Ethnicity, Percent)) +
+  geom_boxplot() +
+  theme_bw() +
+  ggtitle("Distribution of Ethnicity Percentages in Peterborough OAs") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# Summary stats per ethnic group
+peterborough_summary_statistics <- peterborough_summary_long %>% 
+  group_by(Ethnicity) %>%  
+  summarise(
+    mean = round(mean(Percent), 1),
+    median = round(median(Percent), 1),
+    maximum = round(max(Percent), 1),
+    minimum = round(min(Percent), 1)
+  )
+
+# inspect
+peterborough_summary_statistics
+```
+
+```{r}
+# merge shapefile with Peterborough OA data
+peterborough_map <- merge(output_area_shapes, peterborough_OAs, by.x = "OA21CD", by.y = "OA_code")
+```
+
+```{r}
+# create Whites and All_minorities group, and calculate all percentages (including new ones)
+peterborough_map <- peterborough_map %>%
+  mutate(
+    Whites = White_British + Other_White,
+    All_minorities = Indian + Pakistani + Bangladeshi + Chinese + African + Caribbean + Mixed + Other_groups
+  ) %>%
+  mutate(
+    across(White_British:Other_groups, ~ .x / Total_OA_pop * 100, .names = "p_{.col}"),
+    p_Whites = Whites / Total_OA_pop * 100,
+    p_All_minorities = All_minorities / Total_OA_pop * 100
+  )
+```
+
+```{r}
+# calculate the dissimilarity index for the new groups
+dissimilarity_index_2 <- MLID::id(peterborough_map, vars = c("Whites", "All_minorities"))
+
+# inspect
+# the dissimilarity value is 0.379
+dissimilarity_index_2
+
+# extract the numeric index value
+dissimilarity_value_2 <- as.numeric(dissimilarity_index_2)
+
+# convert dissimilartiy index into a data frame
+dissimilarity_df <- data.frame(
+  Area = "Peterborough",
+  ID_occupation = round(dissimilarity_value_1, 2), # round to 2 decimal places
+  ID_ethnitiy = round(dissimilarity_value_2, 2) # round to 2 decimal places
+  )
+
+# stargazer
+stargazer(as.data.frame(dissimilarity_df), type = "latex", summary = FALSE, 
+          title = "Index of Dissimilarity in Peterborough", rownames = FALSE)
+```
+
+```{r}
+# thematic map for % Whites and % All_minorities
+tm_shape(peterborough_map) +
+  tm_fill(col = c("p_Whites", "p_All_minorities"),
+          title = c("% Whites", "% All Minorities"),
+          style = "fixed",
+          breaks = c(0, 10, 20, 30, 40, 50, 100)) +
+  tm_borders(col = "darkgrey", alpha = .25) +
+  tm_scale_bar(position = c("left", "bottom")) +
+  tm_compass(position = c("right", "top")) +
+  tm_layout(main.title = "% of White and Minority Populations in Peterborough OAs",
+            main.title.position = c("center", "top"),
+            main.title.size = 0.65,
+            main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1,
+            legend.position = c("right", "bottom"))
+```
+
+
+```{r}
+# neighbour relationships using Queen’s contiguity
+neighbour_OAs <- poly2nb(peterborough_map, queen = TRUE)
+summary(neighbour_OAs)
+```
+
+```{r}
+# plot the geographic boundaries of Bradford's Output Areas
+plot(peterborough_map$geometry)
+# overlay neighbourhood connections onto the map
+plot(
+  neighbour_OAs, # adjacency matrix
+  coords = peterborough_map$geometry, # plot neighbour connections from polygon centroids
+  col ="red", # colour of neighbour lines
+  add  = T # add neighbour lines to existing plot
+)
+```
+
+```{r}
+# convert neighbours to spatial weights
+neighbour_OAs <- nb2listw(neighbour_OAs)
+
+# calculate Getis-Ord Gi* for Whites and All Minorities
+g_Whites <- localG(peterborough_map$p_Whites, neighbour_OAs)
+g_All_minorities <- localG(peterborough_map$p_All_minorities, neighbour_OAs)
+```
+
+```{r}
+# append Gi* scores to spatial data frame
+g_map <- cbind(peterborough_map, 
+               g_Whites = as.numeric(g_Whites),
+               g_All_minorities = as.numeric(g_All_minorities))
+```
+
+```{r}
+# create thematic map for hotspots and coldspots (Gi*)
+ethnicity_Gi <- tm_shape(g_map) +  
+  tm_fill(col = c("g_Whites", "g_All_minorities"),
+          palette = "-RdBu",
+          style = "fixed",
+          breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10),
+          title = c("Whites (Gi*)", "All Minorities (Gi*)")) +
+  tm_borders(col = "darkgrey", alpha = .25) +
+  tm_scale_bar(position = c("center", "bottom")) +
+  tm_compass(position = c("right", "top")) +
+  tm_layout(
+            # main.title = "Hotspots and Coldspots for Whites and Minorities in Peterborough OAs",
+            # main.title.position = c("center", "top"),
+            # main.title.size = 0.6,
+            # main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1,
+            legend.position = c("right", "bottom"))
+
+tmap_save(
+  tm = ethnicity_Gi,  # or name of your map object if stored in a variable
+  filename = "ethnicity_gi.pdf",  # or .png
+  width = 8, height = 6, units = "in"  # adjust size as needed
+)
+```
+
+
+```{r}
+tm_shape(g_map) +  
+  tm_fill(col = c("g_Whites", "g_All_minorities"),
+          palette = "-RdBu",
+          style = "fixed",
+          breaks = c(-10, -2.58, -1.96, 1.96, 2.58, 10),
+          title = c("Whites (Gi*)", "All Minorities (Gi*)")) +
+  tm_borders(col = "darkgrey", alpha = .25) +
+  tm_scale_bar(position = c("left", "bottom")) +
+  tm_compass(type = "arrow", size = 1, position = c("left", "top")) +
+  tm_layout(
+            # main.title = "Hotspots and Coldspots for Whites and Minorities in Peterborough OAs",
+            # main.title.position = c("center", "top"),
+            # main.title.size = 0.6,
+            # main.title.fontface = "bold",
+            legend.frame = TRUE,
+            legend.title.size = 1,
+            legend.position = c("right", "bottom"))
+```
+
